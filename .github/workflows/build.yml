@@ -2,25 +2,35 @@ name: Run Changed Python Projects
 
 on:
   push:
-    branches: [ "**" ]
+    branches: ["**"]
     paths-ignore:
       - ".github/workflows/*.yml"
   pull_request:
-    branches: [ "**" ]
+    branches: ["**"]
     paths-ignore:
       - ".github/workflows/*.yml"
 
 jobs:
-  detect-changes:
+  run-changed-python:
     runs-on: ubuntu-latest
-    outputs:
-      projects: ${{ steps.changes.outputs.projects }}
+    strategy:
+      matrix:
+        python-version: ["3.13.5"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Detect changed projects
-        id: changes
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Detect and run changed projects
         run: |
           echo "Finding changed project folders..."
           git fetch --depth=2 origin ${{ github.base_ref }} || true
@@ -38,39 +48,14 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED_FILES"
 
+          # Detect project folders containing main.py
           PROJECTS=$(echo "$CHANGED_FILES" | grep "main.py" | xargs -r -n1 dirname | sort -u)
 
           echo "Detected project folders:"
           echo "$PROJECTS"
 
-          # Use EOF format to handle spaces
-          echo "projects<<EOF" >> $GITHUB_OUTPUT
-          echo "$PROJECTS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-  run-python:
-    needs: detect-changes
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [ "3.13.5" ]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-
-      - name: Run changed main.py files
-        run: |
-          for project in ${{ needs.detect-changes.outputs.projects }}; do
-            echo "Running $project/main.py"
+          # Run each changed project safely, handling spaces
+          while IFS= read -r project; do
+            echo "Running '$project/main.py'"
             python "$project/main.py" || exit 1
-          done
+          done <<< "$PROJECTS"
