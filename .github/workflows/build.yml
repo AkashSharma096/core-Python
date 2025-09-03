@@ -49,13 +49,13 @@ jobs:
           echo "$CHANGED_FILES"
 
           # Detect project folders containing main.py
-          PROJECTS=$(echo "$CHANGED_FILES" | grep "main.py" | xargs -r -n1 dirname | sort -u)
+          PROJECTS=$(echo "$CHANGED_FILES" | grep "main.py" | xargs -n1 dirname | sort -u)
 
           echo "Detected project folders:"
           echo "$PROJECTS"
 
-          # Run each changed project safely, handling spaces
-          while IFS= read -r project; do
+          # Run each changed project
+          for project in $PROJECTS; do
             echo "Running '$project/main.py'"
             python "$project/main.py" || exit 1
-          done <<< "$PROJECTS"
+          done
