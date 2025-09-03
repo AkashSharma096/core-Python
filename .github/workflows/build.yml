@@ -3,8 +3,12 @@ name: Run Changed Python Projects
 on:
   push:
     branches: [ "**" ]
+    paths-ignore:
+      - ".github/workflows/*.yml"   # don't trigger if only workflow files change
   pull_request:
     branches: [ "**" ]
+    paths-ignore:
+      - ".github/workflows/*.yml"
 
 jobs:
   run-changed-projects:
@@ -27,19 +31,22 @@ jobs:
         id: changes
         run: |
           echo "Finding changed project folders..."
-          git fetch origin ${{ github.base_ref }} --depth=1 || true
-          
-          # Get changed files (compare against base for PR, or previous commit for push)
+          git fetch --depth=2 origin ${{ github.base_ref }} || true
+
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }})
           else
-            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD)
+            # If first commit, compare against empty tree
+            if git rev-parse HEAD^ >/dev/null 2>&1; then
+              CHANGED_FILES=$(git diff --name-only HEAD^ HEAD)
+            else
+              CHANGED_FILES=$(git ls-tree --name-only -r HEAD)
+            fi
           fi
 
           echo "Changed files:"
           echo "$CHANGED_FILES"
 
-          # Extract unique project directories containing main.py
           PROJECTS=$(echo "$CHANGED_FILES" | grep "main.py" | xargs -r -n1 dirname | sort -u)
 
           echo "Detected project folders:"
