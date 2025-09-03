@@ -1,0 +1,60 @@
+name: Run Changed Python Projects
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  run-changed-projects:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: [ "3.9", "3.10", "3.11" ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Detect changed projects
+        id: changes
+        run: |
+          echo "Finding changed project folders..."
+          git fetch origin ${{ github.base_ref }} --depth=1 || true
+          
+          # Get changed files (compare against base for PR, or previous commit for push)
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }})
+          else
+            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD)
+          fi
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          # Extract unique project directories containing main.py
+          PROJECTS=$(echo "$CHANGED_FILES" | grep "main.py" | xargs -r -n1 dirname | sort -u)
+
+          echo "Detected project folders:"
+          echo "$PROJECTS"
+
+          echo "projects=$PROJECTS" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run changed main.py files
+        run: |
+          for project in ${{ steps.changes.outputs.projects }}; do
+            echo "Running $project/main.py"
+            python "$project/main.py" || exit 1
+          done
